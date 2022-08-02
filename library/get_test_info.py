@@ -43,7 +43,7 @@ def main():
     path = module.params['path']
 
     if path[-1] != '/':
-        path = path + '/'
+        path = f'{path}/'
 
     tests = []
     for (dirpath, dirnames, files) in walk(path):
@@ -52,10 +52,10 @@ def main():
             command = dirpath.split('/')[-1]
         if files and command:
             for each in files:
-                if 'parsed' in each:                              # cisco_ios_show_ip_bgp_summary.parsed
+                if 'parsed' in each:          # cisco_ios_show_ip_bgp_summary.parsed
                     filename = each.split('.parsed')[0]           # cisco_ios_show_ip_bgp_summary   |   cisco_ios-3k_show_vlan
-                    platform = filename.split('_' + command)[0]   # cisco_ios  |  cisco_ios-3k
-                    raw = filename + '.raw'
+                    platform = filename.split(f'_{command}')[0]
+                    raw = f'{filename}.raw'
                     cmd = command.replace('_', ' ')
                     temp = dict(command=cmd, platform=platform,
                                 rawfile=raw, parsedfile=each, path=dirpath)

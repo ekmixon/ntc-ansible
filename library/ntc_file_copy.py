@@ -212,8 +212,7 @@ def main():
         remote_file=dict(required=False),
         file_system=dict(required=False),
     )
-    argument_spec = base_argument_spec
-    argument_spec.update(connection_argument_spec)
+    argument_spec = base_argument_spec | connection_argument_spec
     argument_spec["provider"] = dict(required=False, type="dict", options=connection_argument_spec)
 
     module = AnsibleModule(
@@ -280,7 +279,7 @@ def main():
                       'password': password, 'local_file': local_file}
     for key, val in argument_check.items():
         if val is None:
-            module.fail_json(msg=str(key) + " is required")
+            module.fail_json(msg=f"{str(key)} is required")
 
     device.open()
 
@@ -289,7 +288,7 @@ def main():
     file_exists = True
 
     if not os.path.isfile(local_file):
-        module.fail_json(msg="Local file {} not found".format(local_file))
+        module.fail_json(msg=f"Local file {local_file} not found")
 
     if file_system:
         remote_exists = device.file_copy_remote_exists(local_file, remote_file,

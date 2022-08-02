@@ -281,9 +281,11 @@ def clitable_to_dict(cli_table):
     """
     objs = []
     for row in cli_table:
-        temp_dict = {}
-        for index, element in enumerate(row):
-            temp_dict[cli_table.header[index].lower()] = element
+        temp_dict = {
+            cli_table.header[index].lower(): element
+            for index, element in enumerate(row)
+        }
+
         objs.append(temp_dict)
 
     return objs
@@ -363,8 +365,7 @@ def main():
         use_templates=dict(required=False, default=True, type='bool'),
         command=dict(required=True),
     )
-    argument_spec = base_argument_spec
-    argument_spec.update(connection_argument_spec)
+    argument_spec = base_argument_spec | connection_argument_spec
     argument_spec["provider"] = dict(required=False, type="dict", options=connection_argument_spec)
 
     module = AnsibleModule(
@@ -420,11 +421,7 @@ def main():
     if module.params['port']:
         port = int(module.params['port'])
     else:
-        if device_type == 'cisco_ios_telnet':
-            port = 23
-        else:
-            port = 22
-
+        port = 23 if device_type == 'cisco_ios_telnet' else 22
     argument_check = { 'platform': platform }
     if connection != 'offline':
         argument_check['username'] = username
@@ -435,7 +432,7 @@ def main():
 
     for key, val in argument_check.items():
         if val is None:
-            module.fail_json(msg=str(key) + " is required")
+            module.fail_json(msg=f"{str(key)} is required")
 
     if connection == 'offline' and not raw_file:
         module.fail_json(msg='specifiy file if using connection=offline')
@@ -444,7 +441,7 @@ def main():
         template_dir.rstrip('/')
 
     if use_templates:
-        if not os.path.isfile(template_dir + '/' + index_file):
+        if not os.path.isfile(f'{template_dir}/{index_file}'):
             module.fail_json(msg='could not find or read index file')
 
         if raw_file and not os.path.isfile(raw_file):
@@ -468,7 +465,7 @@ def main():
             global_delay_factor=global_delay_factor
         )
         if connection_args:
-            device_args.update(connection_args)
+            device_args |= connection_args
         device = ConnectHandler(**device_args)
         if secret:
             device.enable()
@@ -478,14 +475,12 @@ def main():
     elif connection == 'trigger_ssh':
         if not HAS_TRIGGER:
             module.fail_json(msg='This module requires trigger.')
-        kwargs = {}
-        kwargs['production_only'] = False
-        kwargs['force_cli'] = True
+        kwargs = {'production_only': False, 'force_cli': True}
         if optional_args:
             module.deprecate(
                 msg="optional_args is deprecated in favor of connection_args."
             )
-            kwargs.update(optional_args)
+            kwargs |= optional_args
         if connection_args:
             kwargs.update(connection_args)
 
@@ -507,10 +502,7 @@ def main():
         with open(local_file, 'w') as f:
             f.write(rawtxt)
 
-    results = {}
-    results['response'] = []
-    results['response_list'] = []
-
+    results = {'response': [], 'response_list': []}
     if use_templates:
         if rawtxt:
             results['response'] = parse_raw_output(rawtxt, module)

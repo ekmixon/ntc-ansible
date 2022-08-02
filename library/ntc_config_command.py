@@ -158,12 +158,10 @@ if (HAS_PACKAGING and version.parse(ansible_version) < version.parse("2.4")) or 
 
 def error_params(platform, command_output):
     if 'cisco_ios' in platform:
-        if "Invalid input detected at '^' marker" in command_output:
-            return True
-        elif "Ambiguous command" in command_output:
-            return True
-        else:
-            return False
+        return (
+            "Invalid input detected at '^' marker" in command_output
+            or "Ambiguous command" in command_output
+        )
 
 
 def main():
@@ -189,8 +187,7 @@ def main():
         commands=dict(required=False, type='list'),
         commands_file=dict(required=False),
     )
-    argument_spec = base_argument_spec
-    argument_spec.update(connection_argument_spec)
+    argument_spec = base_argument_spec | connection_argument_spec
     argument_spec["provider"] = dict(required=False, type="dict", options=connection_argument_spec)
 
     module = AnsibleModule(
@@ -224,7 +221,7 @@ def main():
     argument_check = {'host': host, 'username': username, 'platform': platform, 'password': password}
     for key, val in argument_check.items():
         if val is None:
-            module.fail_json(msg=str(key) + " is required")
+            module.fail_json(msg=f"{str(key)} is required")
 
     if module.params['host']:
         host = socket.gethostbyname(module.params['host'])
@@ -238,11 +235,7 @@ def main():
     if module.params['port']:
         port = int(module.params['port'])
     else:
-        if connection == 'telnet':
-            port = 23
-        else:
-            port = 22
-
+        port = 23 if connection == 'telnet' else 22
     if connection in ['ssh', 'telnet']:
         device_args = dict(
             device_type=device_type,
@@ -255,7 +248,7 @@ def main():
             key_file=key_file,
         )
         if connection_args:
-            device_args.update(connection_args)
+            device_args |= connection_args
 
         device = ConnectHandler(**device_args)
         if secret:
@@ -265,19 +258,16 @@ def main():
             output = device.send_config_set(commands)
         else:
             try:
-                if commands_file:
-                    if os.path.isfile(commands_file):
-                        with open(commands_file, 'r') as f:
-                            output = device.send_config_set(f.readlines())
+                if commands_file and os.path.isfile(commands_file):
+                    with open(commands_file, 'r') as f:
+                        output = device.send_config_set(f.readlines())
             except IOError:
-                module.fail_json(msg="Unable to locate: {}".format(commands_file))
+                module.fail_json(msg=f"Unable to locate: {commands_file}")
 
     if (error_params(platform, output)):
-        module.fail_json(msg="Error executing command: {}".format(output))
+        module.fail_json(msg=f"Error executing command: {output}")
 
-    results = {}
-    results['response'] = output
-
+    results = {'response': output}
     module.exit_json(changed=True, **results)
 
 

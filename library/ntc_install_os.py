@@ -241,8 +241,7 @@ def main():
         reboot=dict(required=False, type="bool", default=False),
         install_mode=dict(required=False, type="bool", default=None),
     )
-    argument_spec = base_argument_spec
-    argument_spec.update(connection_argument_spec)
+    argument_spec = base_argument_spec | connection_argument_spec
     argument_spec["provider"] = dict(required=False, type="dict", options=connection_argument_spec)
 
     module = AnsibleModule(
@@ -307,7 +306,7 @@ def main():
     }
     for key, val in argument_check.items():
         if val is None:
-            module.fail_json(msg=str(key) + " is required")
+            module.fail_json(msg=f"{str(key)} is required")
 
     if ntc_host is not None:
         device = ntc_device_by_name(ntc_host, ntc_conf_file)
@@ -331,7 +330,11 @@ def main():
     version_numbers = pyntc_version.split(".")
     install_mode = module.params.get("install_mode")
 
-    if install_mode and not ((int(version_numbers[0]) > 0) or (int(version_numbers[1]) >= 16)):
+    if (
+        install_mode
+        and int(version_numbers[0]) <= 0
+        and int(version_numbers[1]) < 16
+    ):
         module.fail_json(
             msg="Current version of PyNTC does not support install_mode. Please update PyNTC >= 0.16.0"
         )
@@ -342,103 +345,7 @@ def main():
     device.open()
     pre_install_boot_options = device.get_boot_options()
 
-    if not module.check_mode:
-        # TODO: Remove conditional when deprecating older pyntc
-        if HAS_PYNTC_VERSION:
-            try:
-                # TODO: Remove conditional if we require reboot for non-F5 devices
-                if reboot or device.device_type == "f5_tmos_icontrol":
-                    changed = device.install_os(
-                        image_name=system_image_file,
-                        kickstart=kickstart_image_file,
-                        volume=volume,
-                        install_mode=install_mode,
-                    )
-                else:
-                    # TODO: Remove support if we require reboot for non-F5 devices
-                    changed = device.set_boot_options(system_image_file)
-            except (
-                CommandError,
-                CommandListError,
-                FileSystemNotFoundError,
-                NotEnoughFreeSpaceError,
-                NTCFileNotFoundError,
-                OSInstallError,
-                RebootTimeoutError,
-            ) as e:
-                module.fail_json(msg=e.message)
-            except Exception as e:
-                module.fail_json(msg=str(e))
-
-            if (
-                reboot
-                and device.device_type == "f5_tmos_icontrol"
-                and pre_install_boot_options["active_volume"] != volume
-            ):
-                try:
-                    changed = True
-                    device.reboot(confirm=True, volume=volume)
-                except RuntimeError:
-                    module.fail_json(
-                        msg="Attempted reboot but did not boot to desired volume",
-                        original_volume=pre_install_boot_options["active_volume"],
-                        expected_volume=volume,
-                    )
-
-            install_state = device.get_boot_options()
-
-        # TODO: Remove contents of else when deprecating older pyntc
-        else:
-            changed = False
-            install_state = pre_install_boot_options
-
-            if not already_set(
-                boot_options=pre_install_boot_options,
-                system_image_file=system_image_file,
-                kickstart_image_file=kickstart_image_file,
-                volume=volume,
-                device=device,
-            ):
-                changed = True
-
-                if device.device_type == "nxos":
-                    timeout = 600
-                    device.set_timeout(timeout)
-                    try:
-                        start_time = time.time()
-                        device.set_boot_options(system_image_file, kickstart=kickstart_image_file)
-                    except:
-                        pass
-                    elapsed_time = time.time() - start_time
-
-                    device.set_timeout(30)
-                    try:
-                        install_state = device.get_boot_options()
-                    except:
-                        install_state = {}
-
-                    while elapsed_time < timeout and not install_state:
-                        try:
-                            install_state = device.get_boot_options()
-                        except:
-                            time.sleep(10)
-                            elapsed_time += 10
-                else:
-                    device.set_boot_options(
-                        system_image_file, kickstart=kickstart_image_file, volume=volume
-                    )
-                    install_state = device.get_boot_options()
-
-                    if not already_set(
-                        boot_options=pre_install_boot_options,
-                        system_image_file=system_image_file,
-                        kickstart_image_file=kickstart_image_file,
-                        volume=volume,
-                        device=device,
-                    ):
-                        module.fail_json(msg="Install not successful", install_state=install_state)
-
-    else:
+    if module.check_mode:
         if HAS_PYNTC_VERSION:
             changed = device._image_booted(
                 image_name=system_image_file, kickstart=kickstart_image_file, volume=volume
@@ -454,6 +361,100 @@ def main():
             )
 
         install_state = pre_install_boot_options
+
+    elif HAS_PYNTC_VERSION:
+        try:
+                # TODO: Remove conditional if we require reboot for non-F5 devices
+            changed = (
+                device.install_os(
+                    image_name=system_image_file,
+                    kickstart=kickstart_image_file,
+                    volume=volume,
+                    install_mode=install_mode,
+                )
+                if reboot or device.device_type == "f5_tmos_icontrol"
+                else device.set_boot_options(system_image_file)
+            )
+
+        except (
+            CommandError,
+            CommandListError,
+            FileSystemNotFoundError,
+            NotEnoughFreeSpaceError,
+            NTCFileNotFoundError,
+            OSInstallError,
+            RebootTimeoutError,
+        ) as e:
+            module.fail_json(msg=e.message)
+        except Exception as e:
+            module.fail_json(msg=str(e))
+
+        if (
+            reboot
+            and device.device_type == "f5_tmos_icontrol"
+            and pre_install_boot_options["active_volume"] != volume
+        ):
+            try:
+                changed = True
+                device.reboot(confirm=True, volume=volume)
+            except RuntimeError:
+                module.fail_json(
+                    msg="Attempted reboot but did not boot to desired volume",
+                    original_volume=pre_install_boot_options["active_volume"],
+                    expected_volume=volume,
+                )
+
+        install_state = device.get_boot_options()
+
+    else:
+        changed = False
+        install_state = pre_install_boot_options
+
+        if not already_set(
+            boot_options=pre_install_boot_options,
+            system_image_file=system_image_file,
+            kickstart_image_file=kickstart_image_file,
+            volume=volume,
+            device=device,
+        ):
+            changed = True
+
+            if device.device_type == "nxos":
+                timeout = 600
+                device.set_timeout(timeout)
+                try:
+                    start_time = time.time()
+                    device.set_boot_options(system_image_file, kickstart=kickstart_image_file)
+                except:
+                    pass
+                elapsed_time = time.time() - start_time
+
+                device.set_timeout(30)
+                try:
+                    install_state = device.get_boot_options()
+                except:
+                    install_state = {}
+
+                while elapsed_time < timeout and not install_state:
+                    try:
+                        install_state = device.get_boot_options()
+                    except:
+                        time.sleep(10)
+                        elapsed_time += 10
+            else:
+                device.set_boot_options(
+                    system_image_file, kickstart=kickstart_image_file, volume=volume
+                )
+                install_state = device.get_boot_options()
+
+                if not already_set(
+                    boot_options=pre_install_boot_options,
+                    system_image_file=system_image_file,
+                    kickstart_image_file=kickstart_image_file,
+                    volume=volume,
+                    device=device,
+                ):
+                    module.fail_json(msg="Install not successful", install_state=install_state)
 
     device.close()
     module.exit_json(changed=changed, install_state=install_state)

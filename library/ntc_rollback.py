@@ -160,8 +160,7 @@ def main():
         rollback_to=dict(required=False),
     )
 
-    argument_spec = base_argument_spec
-    argument_spec.update(connection_argument_spec)
+    argument_spec = base_argument_spec | connection_argument_spec
     argument_spec["provider"] = dict(required=False, type="dict", options=connection_argument_spec)
 
     module = AnsibleModule(
@@ -221,7 +220,7 @@ def main():
     argument_check = { 'host': host, 'username': username, 'platform': platform, 'password': password }
     for key, val in argument_check.items():
         if val is None:
-            module.fail_json(msg=str(key) + " is required")
+            module.fail_json(msg=f"{str(key)} is required")
 
     device.open()
 

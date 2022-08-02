@@ -203,7 +203,6 @@ def check_device(module, username, password, host, timeout, kwargs):
                 device.close()
             except:
                 atomic = False
-                pass
         except:
             time.sleep(30)
             counter += 1
@@ -230,8 +229,7 @@ def main():
         timeout=dict(required=False, type='int', default=240),
         volume=dict(required=False, type='str'),
     )
-    argument_spec = base_argument_spec
-    argument_spec.update(connection_argument_spec)
+    argument_spec = base_argument_spec | connection_argument_spec
     argument_spec["provider"] = dict(required=False, type="dict", options=connection_argument_spec)
 
     module = AnsibleModule(
@@ -275,7 +273,7 @@ def main():
                       'password': password}
     for key, val in argument_check.items():
         if val is None:
-            module.fail_json(msg=str(key) + " is required")
+            module.fail_json(msg=f"{str(key)} is required")
 
     kwargs = {}
     if ntc_host is not None:
@@ -303,15 +301,14 @@ def main():
     supported_timer_platforms = [PLATFORM_IOS, PLATFORM_JUNOS]
 
     if timer is not None and device.device_type not in supported_timer_platforms:
-        module.fail_json(
-            msg='Timer parameter not supported on platform %s.' % platform)
+        module.fail_json(msg=f'Timer parameter not supported on platform {platform}.')
 
     argument_check = {'host': host, 'username': username, 'platform': platform,
                       'password': password}
 
     for key, val in argument_check.items():
         if val is None:
-            module.fail_json(msg=str(key) + " is required")
+            module.fail_json(msg=f"{str(key)} is required")
 
     device.open()
 

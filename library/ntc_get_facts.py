@@ -225,10 +225,8 @@ def main():
         ntc_host=dict(required=False),
         ntc_conf_file=dict(required=False),
     )
-    base_argument_spec = dict(
-    )
-    argument_spec = base_argument_spec
-    argument_spec.update(connection_argument_spec)
+    base_argument_spec = {}
+    argument_spec = base_argument_spec | connection_argument_spec
     argument_spec["provider"] = dict(required=False, type="dict", options=connection_argument_spec)
 
     module = AnsibleModule(
@@ -271,7 +269,7 @@ def main():
                       'password': password}
     for key, val in argument_check.items():
         if val is None:
-            module.fail_json(msg=str(key) + " is required")
+            module.fail_json(msg=f"{str(key)} is required")
 
     if ntc_host is not None:
         device = ntc_device_by_name(ntc_host, ntc_conf_file)
